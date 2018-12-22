@@ -12,9 +12,11 @@ import os
 import datetime
 from selenium import webdriver
 from selenium.webdriver.common.by import By
-import pandas as pd
+
+import csv
+from collections import defaultdict
+
 from time import sleep
-#import csv
 import monoauth 
 import monolog
 
@@ -24,15 +26,23 @@ class monoGet:
     url = 'http://mnrate.com'
     no=1
     program_name = "monoget"
+    user_id = ""
     
 
-    def ExcelLoad(self):
-        df = pd.read_csv(monoGet.csv_path)
-        #df = csv.reader(csv_path, delimiter=",", doublequote=True, lineterminator="\r\n", quotechar='"', skipinitialspace=True)
-        return(df)
+    def csvLoad(self):
+        columns = defaultdict(list) # each value in each column is appended to a list
+        
+        with open(monoGet.csv_path) as f:
+            reader = csv.DictReader(f) # read rows into a dictionary format
+            for row in reader: # read a row as {column1: value1, column2: value2,...}
+                for (k,v) in row.items(): # go over each column name and value 
+                    columns[k].append(v) # append the value into the appropriate list
+                                         # based on column name k
 
-    def ExcelOut(self, df, path):
-        df.to_csv(path)   
+        target_list = columns['asincd'] 
+        #df = pd.read_csv(monoGet.csv_path)
+        #df = csv.reader(csv_path, delimiter=",", doublequote=True, lineterminator="\r\n", quotechar='"', skipinitialspace=True)
+        return(target_list)
         
     def GetDriver(self):
         driver_path = self.home + u'\\chromedriver.exe'
@@ -72,7 +82,7 @@ class monoGet:
         
         
         ## データ用 データフレーム を作る 出品者以降
-        val_df = pd.DataFrame(index=[], columns=(col_header))
+        #val_df = pd.DataFrame(index=[], columns=(col_header))
 
         ## ディメンション用 データフレームを作る ASIN:商品名:商品カテゴリ
         item_list = []
@@ -88,13 +98,11 @@ class monoGet:
                 item_list.append(val)
                 #print(val)
             ## Dataframe にデータを追加
-        series = pd.Series(item_list, index=val_df.columns)
-        df = val_df.append(series, ignore_index = True)
         
         self.no+=1
         ## textファイルへ出力する
         ## df.to_csv(self.home + u'\\' + asin_cd + '.csv', index=False)
-        return(df)
+        return(item_list)
 
     def CloseDriver(driver, self):
         driver.close()
@@ -106,24 +114,34 @@ class monoGet:
 if __name__ == "__main__":
     ## 認証実施
     Autentication = monoauth.monoAuth()
-    if Autentication == False:
+    if Autentication[0] == False:
         raise Exception('Authentication faild.....')
 
     scr = monoGet()
-    df = scr.ExcelLoad()
+    scr.user_id = Autentication[1]    
+    
+    asin_list = scr.csvLoad()
     drv = scr.GetDriver()
     ## monorate へアクセス
+    
+    #scr.htmlparse(asin_cd)
+    exec_date = datetime.datetime.now().strftime('%Y%m%d%H%M')
+    out_csv = (os.getcwd() + u'\\' + exec_date + '-dataset' + '.csv')    
+    
+    ## 出力用ファイルの作成
+    f = open(out_csv, 'w', newline='')
+    writer = csv.writer(f)    
     ## 行ヘッダー
     col_header = ( \
             'No', 'ASINコード', '商品名', '商品カテゴリー', \
             '新品過去1ヶ月目販売数', '新品過去2ヶ月目販売数', '新品過去3ヶ月目販売数', '新品平均月間販売数', \
             '中古過去1ヶ月目販売数', '中古過去2ヶ月目販売数', '中古過去3ヶ月目販売数', '中古平均月間販売数' \
             )
-    
-    dset = pd.DataFrame(index=[], columns=(col_header))
+    # Create Header ------------------------------
+    writer.writerow(col_header)
 
     ## Print Message
-    str_df_length = str(len(df))
+    str_df_length = str(len(asin_list))
     print("===============================================")
     print(" monoget : Hello!! ")
     print("===============================================")
@@ -131,19 +149,19 @@ if __name__ == "__main__":
     print(str_df_length + "件 のデータを取得します")
     
     ## monolog Insert
-    monolog.monogetLogInsert(userid = "hoge", prgname = scr.program_name, count = str_df_length, )
+    monolog.monogetLogInsert(userid = scr.user_id, prgname = scr.program_name, count = str_df_length, )
+
     ## monoget の実行
-    for i in range(0, len(df)):
-        asin_cd = df['asincd'][i]
+    # Write Rows  ------------------------------
+    for i in range(0, len(asin_list)):
+        asin_cd = asin_list[i]
         
         print(str(i+1) + "/" + str_df_length + " ISINコード : " + str(asin_cd) )
-        df_wk = scr.AccessTopPage(drv, asin_cd, col_header)
-        dset = pd.concat([dset, df_wk])
+        wk_item_list = scr.AccessTopPage(drv, asin_cd, col_header)
+        writer.writerow(wk_item_list)
         scr._wait()
-
-    #scr.htmlparse(asin_cd)
-    exec_date = datetime.datetime.now().strftime('%Y%m%d%H%M')
-    dset.to_csv(os.getcwd() + u'\\' + exec_date + '-dataset' + '.csv', index=False, encoding="shift_jis")    
+    
+    f.close()
     print("-----------------------------------------------")
     print("complete!! check csv file !! " + str(exec_date) )
     print("Please close this prompt.")
