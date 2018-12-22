@@ -42,13 +42,15 @@ def monoAuth():
     with urllib.request.urlopen(req) as res:
         body = res.read()
         t = body.decode()
+    
+    print(t)
 
     result = str(json.loads(t)["statusCode"])
     
     if result == "200":
-        return True
+        return True, user_id
     else:
-        return False
+        return False, user_id
 
     
 if __name__ == "__main__":
