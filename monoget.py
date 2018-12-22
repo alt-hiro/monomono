@@ -15,25 +15,25 @@ from selenium.webdriver.common.by import By
 import pandas as pd
 from time import sleep
 #import csv
- 
+import monoauth 
+import monolog
 
-class DataHandler:
+class monoGet:
     home = os.getcwd()
     csv_path = home + u'\\target.csv'
     url = 'http://mnrate.com'
     no=1
-
+    program_name = "monoget"
+    
 
     def ExcelLoad(self):
-        df = pd.read_csv(DataHandler.csv_path)
+        df = pd.read_csv(monoGet.csv_path)
         #df = csv.reader(csv_path, delimiter=",", doublequote=True, lineterminator="\r\n", quotechar='"', skipinitialspace=True)
         return(df)
 
     def ExcelOut(self, df, path):
         df.to_csv(path)   
         
-        
-
     def GetDriver(self):
         driver_path = self.home + u'\\chromedriver.exe'
         ##driver_path = home + u'\\chromedriver.exe'
@@ -46,7 +46,7 @@ class DataHandler:
         driver = webdriver.Chrome(driver_path, chrome_options = options)
         
         # 商品のURLへアクセス
-        driver.get(DataHandler.url)
+        driver.get(monoGet.url)
         self._wait()
         return(driver)
 
@@ -57,10 +57,6 @@ class DataHandler:
 
         # 検索ボタンを実行する
         driver.find_element_by_id('_graph_search_btn').click() 
-
-        ## ブラウザに表示されているオブジェクトを全て選択
-        # driver.execute_script("document.execCommand('SelectAll');")
-        # copy = driver.execute_script("return window.getSelection().toString();")
 
         # テーブル内容取得 
         tableElem = driver.find_element_by_class_name("table-bordered")
@@ -76,7 +72,6 @@ class DataHandler:
         
         
         ## データ用 データフレーム を作る 出品者以降
-        ## これいｒないこあｍｐ
         val_df = pd.DataFrame(index=[], columns=(col_header))
 
         ## ディメンション用 データフレームを作る ASIN:商品名:商品カテゴリ
@@ -109,8 +104,12 @@ class DataHandler:
        
 
 if __name__ == "__main__":
-    ## Target List ファイルのロード
-    scr = DataHandler()
+    ## 認証実施
+    Autentication = monoauth.monoAuth()
+    if Autentication == False:
+        raise Exception('Authentication faild.....')
+
+    scr = monoGet()
     df = scr.ExcelLoad()
     drv = scr.GetDriver()
     ## monorate へアクセス
@@ -130,37 +129,26 @@ if __name__ == "__main__":
     print("===============================================")
     print("このウィンドウは閉じないでください Google Chrome が起動します")
     print(str_df_length + "件 のデータを取得します")
-
+    
+    ## monolog Insert
+    monolog.monogetLogInsert(userid = "hoge", prgname = scr.program_name, count = str_df_length, )
+    ## monoget の実行
     for i in range(0, len(df)):
         asin_cd = df['asincd'][i]
         
         print(str(i+1) + "/" + str_df_length + " ISINコード : " + str(asin_cd) )
         df_wk = scr.AccessTopPage(drv, asin_cd, col_header)
         dset = pd.concat([dset, df_wk])
+        scr._wait()
+
     #scr.htmlparse(asin_cd)
     exec_date = datetime.datetime.now().strftime('%Y%m%d%H%M')
     dset.to_csv(os.getcwd() + u'\\' + exec_date + '-dataset' + '.csv', index=False, encoding="shift_jis")    
     print("-----------------------------------------------")
-    print("complete!! check csv file!!")
+    print("complete!! check csv file !! " + str(exec_date) )
     print("Please close this prompt.")
     print("===============================================")
     print(" monoget: Bye!")
     print("===============================================")
     drv.close()
-
-
-"""
-message = 
-  このウィンドウは閉じないでください
-  Google Chrome が起動します
-  ASINコード は x[] 件です。
-  処理を開始します。
-  n 件が終了しました。  
-
-やること
-* データセットのフォーマットなおす
-* Selenium のサイズ削減
-*  
-
-"""
 
